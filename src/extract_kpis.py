@@ -1,6 +1,7 @@
 """
-Extract KPIs and sentiment from transcripts.
-Uses an LLM (OpenAI-compatible API) if OPENAI_API_KEY is set, else a regex + lexicon fallback.
+Extract 8 fields + score 8 signals from transcripts.
+Uses an LLM (OpenAI-compatible API) with a fixed smart prompt if OPENAI_API_KEY
+is set, else regex rules that produce the same 8 fields.
 """
 import json
 import os
@@ -11,72 +12,134 @@ from pathlib import Path
 INPUT_PATH = "data/transcripts.json"
 OUTPUT_PATH = "data/kpis.json"
 
-POS_WORDS = {"grew", "expanded", "stable", "up", "growth", "upside", "improved", "strong", "maintained"}
-NEG_WORDS = {"pressure", "rose", "flagged", "decline", "miss", "weak", "down"}
+# The fixed smart prompt - identical in index.html (shown in the web app).
+PROMPT_TEMPLATE = """You are an equity analyst. Read the earnings excerpt below for {company} ({quarter}).
+Return ONLY valid JSON with exactly these fields:
+{{"revenue": "e.g. Rs 19,060 crore or null", "revenue_growth_yoy_pct": number or null,
+"profit": "e.g. Rs 7,769 crore or null", "profit_growth_yoy_pct": number or null,
+"profit_vs_estimate": "beat" | "miss" | "na", "margin_direction": "expand" | "compress" | "flat",
+"guidance": "raised" | "cut" | "maintained" | "na", "operating": "strong" | "weak" | "mixed",
+"tone": "optimistic" | "cautious", "one_off_note": string or null,
+"red_flags": ["short strings"]}}
+Use null / na for anything not stated. No commentary outside the JSON.
+Excerpt: {text}"""
 
 
-def llm_extract(transcript_text):
+def llm_extract(pack):
     """Call OpenAI-compatible chat completions. Returns None on any failure."""
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         return None
     try:
-        body = {
-            "model": "gpt-4o-mini",
-            "messages": [
-                {"role": "system", "content": "You extract KPIs and sentiment from earnings-call transcripts. Respond as JSON: {kpis: {revenue, nim, gnpa, ...}, sentiment: Positive|Neutral|Negative, rationale: short}"},
-                {"role": "user", "content": transcript_text[:3000]},
-            ],
-            "response_format": {"type": "json_object"},
-        }
+        prompt = PROMPT_TEMPLATE.format(company=pack.get("company", pack["ticker"]),
+                                       quarter=pack.get("quarter", "?"), text=pack["text"][:3000])
+        body = {"model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": prompt}],
+                "response_format": {"type": "json_object"}}
         req = urllib.request.Request(
             "https://api.openai.com/v1/chat/completions",
             data=json.dumps(body).encode("utf-8"),
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=20) as r:
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=30) as r:
             data = json.loads(r.read().decode("utf-8"))
-        content = data["choices"][0]["message"]["content"]
-        return json.loads(content)
+        return json.loads(data["choices"][0]["message"]["content"])
     except Exception:
         return None
 
 
-def regex_extract(transcript_text):
-    kpis = {}
-    m = re.search(r"Revenue.*?([\d,]+\s*Cr)", transcript_text)
+def regex_extract(text):
+    f = {"revenue": None, "revenue_growth_yoy_pct": None, "profit": None,
+         "profit_growth_yoy_pct": None, "profit_vs_estimate": "na",
+         "margin_direction": "flat", "guidance": "na", "operating": "mixed",
+         "tone": "cautious", "one_off_note": None, "red_flags": []}
+    m = re.search(r"(?:revenue|net interest income)[^.]*?([\d,.]+\s*(?:lakh crore|crore|cr))", text, re.I)
     if m:
-        kpis["revenue"] = m.group(1)
-    m = re.search(r"NIM.*?(\d+\s*bps)", transcript_text)
+        f["revenue"] = "Rs " + m.group(1)
+    m = re.search(r"(?:revenue|net interest income).{0,80}?(up|down|grew|fell).{0,40}?([\d.]+)%", text, re.I)
     if m:
-        kpis["nim"] = m.group(1)
-    m = re.search(r"GNPA\s*([\d.]+%)", transcript_text)
+        f["revenue_growth_yoy_pct"] = (1 if m.group(1).lower() in ("up", "grew") else -1) * float(m.group(2))
+    m = re.search(r"(?:net profit|profit after tax)[^.]*?Rs ([\d,.]+\s*(?:lakh crore|crore|cr))", text, re.I)
     if m:
-        kpis["gnpa"] = m.group(1)
-    m = re.search(r"Loan book.*?\+(\d+%)", transcript_text)
+        f["profit"] = "Rs " + m.group(1)
+    m = re.search(r"(?:net profit|profit after tax)[^.]*?(up|down)[^.]*?([\d.]+)%", text, re.I)
     if m:
-        kpis["loan_growth"] = m.group(1)
-    pos = sum(1 for w in re.findall(r"\w+", transcript_text.lower()) if w in POS_WORDS)
-    neg = sum(1 for w in re.findall(r"\w+", transcript_text.lower()) if w in NEG_WORDS)
-    sentiment = "Positive" if pos > neg else "Negative" if neg > pos else "Neutral"
-    return {"kpis": kpis, "sentiment": sentiment, "pos": pos, "neg": neg, "source": "regex"}
+        f["profit_growth_yoy_pct"] = (1 if m.group(1).lower() == "up" else -1) * float(m.group(2))
+    if re.search(r"beat[^.]*?estimate", text, re.I):
+        f["profit_vs_estimate"] = "beat"
+    elif re.search(r"below[^.]*?estimate|missed[^.]*?estimate", text, re.I):
+        f["profit_vs_estimate"] = "miss"
+    m = re.search(r"margin (expanded|compress\w*)|NIM (expanded|compressed)", text, re.I)
+    if m:
+        f["margin_direction"] = "expand" if "expand" in (m.group(1) or m.group(2)).lower() else "compress"
+    m = re.search(r"guidance.{0,40}?(cut|trimmed|lowered|raised|increased|maintained|retained|unchanged)"
+                  r"|(cut|trimmed|lowered|raised|increased|maintained|retained)[^.]{0,60}?guidance", text, re.I)
+    if m:
+        w = (m.group(1) or m.group(2)).lower()
+        f["guidance"] = "cut" if re.match(r"cut|trimmed|lowered", w) else ("raised" if re.match(r"raised|increased", w) else "maintained")
+    if re.search(r"strong|record|improved|added [\d.]+ million", text, re.I):
+        f["operating"] = "strong"
+    elif re.search(r"deteriorated|weak demand|slowed", text, re.I):
+        f["operating"] = "weak"
+    if re.search(r"optimistic|confident", text, re.I):
+        f["tone"] = "optimistic"
+    m = re.search(r"one-time[^.]*?Rs ([\d,.]+\s*crore)", text, re.I)
+    if m:
+        f["one_off_note"] = f"One-time item of Rs {m.group(1)} distorts YoY comparison."
+    m = re.search(r"(?:shares|ADR|stock) (fell|rose|gained|slipped|dropped)[^.]*?([\d.]+)%", text, re.I)
+    if m:
+        f["market_move_pct"] = (-1 if m.group(1).lower() in ("fell", "slipped", "dropped") else 1) * float(m.group(2))
+    if f["profit_vs_estimate"] == "miss":
+        f["red_flags"].append("Missed street estimates.")
+    if f["guidance"] == "cut":
+        f["red_flags"].append("Guidance cut.")
+    if f["margin_direction"] == "compress":
+        f["red_flags"].append("Margin compression.")
+    f["source"] = "regex"
+    return f
 
 
-def extract_one(transcript):
-    out = llm_extract(transcript["text"])
-    if out is None:
-        out = regex_extract(transcript["text"])
-    else:
-        out["source"] = "llm"
-    return {"ticker": transcript["ticker"], "quarter": transcript["quarter"], "text": transcript["text"], **out}
+def score(fields, pack):
+    """8 signals, +1/0/-1 each. >= +2 BUY, <= -2 SELL, else HOLD."""
+    s = []
+    s.append(("Profit vs street estimate", fields["profit_vs_estimate"],
+              1 if fields["profit_vs_estimate"] == "beat" else (-1 if fields["profit_vs_estimate"] == "miss" else 0)))
+    rg = fields["revenue_growth_yoy_pct"]
+    s.append((f"Revenue growth YoY ({rg if rg is not None else 'n/a'}%)",
+              "positive" if (rg or 0) > 0 else ("not stated" if rg is None else "negative"),
+              0 if rg is None else (1 if rg > 0 else -1)))
+    pg = fields["profit_growth_yoy_pct"]
+    s.append((f"Profit growth YoY ({pg if pg is not None else 'n/a'}%)",
+              "positive" if (pg or 0) > 0 else ("not stated" if pg is None else "negative"),
+              0 if pg is None else (1 if pg > 0 else -1)))
+    s.append(("Margin direction", fields["margin_direction"],
+              1 if fields["margin_direction"] == "expand" else (-1 if fields["margin_direction"] == "compress" else 0)))
+    s.append(("Guidance", fields["guidance"],
+              1 if fields["guidance"] == "raised" else (-1 if fields["guidance"] == "cut" else 0)))
+    s.append(("Operating (asset quality / deals / subs)", fields["operating"],
+              1 if fields["operating"] == "strong" else (-1 if fields["operating"] == "weak" else 0)))
+    s.append(("Management tone", fields["tone"], 1 if fields["tone"] == "optimistic" else -1))
+    mr = fields.get("market_move_pct", pack.get("market_reaction_pct"))
+    s.append((f"Market reaction ({mr if mr is not None else 'n/a'}%)",
+              "no data" if mr is None else ("up" if mr > 1 else ("down" if mr < -1 else "flat")),
+              0 if mr is None else (1 if mr > 1 else (-1 if mr < -1 else 0))))
+    total = sum(p for _, _, p in s)
+    view = "BUY" if total >= 2 else ("SELL" if total <= -2 else "HOLD")
+    return [{"name": n, "reading": r, "pts": p} for n, r, p in s], total, view
 
 
 def run(in_path=INPUT_PATH, out_path=OUTPUT_PATH):
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     data = json.loads(Path(in_path).read_text(encoding="utf-8"))
-    out = [extract_one(t) for t in data]
+    out = []
+    for t in data:
+        f = llm_extract(t) or regex_extract(t["text"])
+        if "source" not in f:
+            f["source"] = "llm"
+        signals, total, view = score(f, t)
+        out.append({"ticker": t["ticker"], "quarter": t.get("quarter", "?"), "text": t["text"],
+                    "fields": f, "signals": signals, "total": total, "view": view})
     Path(out_path).write_text(json.dumps(out, indent=2), encoding="utf-8")
-    print(f"  extracted {len(out)} records -> {out_path}")
+    print(f"  extracted + scored {len(out)} records -> {out_path}")
     return out
 
 
@@ -84,4 +147,5 @@ if __name__ == "__main__":
     if not Path(INPUT_PATH).exists():
         from pull_transcripts import pull
         pull()
-    run()
+    for r in run():
+        print(f"  {r['ticker']} {r['quarter']}: score {r['total']:+d} -> {r['view']}")

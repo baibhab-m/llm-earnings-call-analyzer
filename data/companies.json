@@ -1,0 +1,35 @@
+[
+  {
+    "ticker": "HDFCBANK",
+    "company": "HDFC Bank",
+    "quarter": "Q1 FY27",
+    "announced": "18 Jul 2026",
+    "source": "Company filing + Moneycontrol / Hindu BusinessLine / Fortune India",
+    "est_profit": 19332,
+    "est_revenue": 34353,
+    "market_reaction_pct": -5.1,
+    "text": "HDFC Bank reported standalone net profit of Rs 19,060 crore, up 5% YoY, below the street estimate of Rs 19,332 crore. Net interest income was Rs 33,536 crore, up 7% YoY, also below the estimate of Rs 34,353 crore. NIM compressed to 3.4% on interest-earning assets from 3.5% last quarter. Asset quality improved, with GNPA down to 1.17% from 1.40% a year ago. Advances grew 15% YoY, ahead of the system. Management sounded cautious on margins. Shares fell 5.1% on the next trading session."
+  },
+  {
+    "ticker": "RELIANCE",
+    "company": "Reliance Industries",
+    "quarter": "Q1 FY27",
+    "announced": "17 Jul 2026",
+    "source": "Company media release + Business Standard / CNBC-TV18",
+    "est_profit": 19823,
+    "est_revenue": 300000,
+    "market_reaction_pct": null,
+    "text": "Reliance reported a record revenue of Rs 3.09 lakh crore, up 27% YoY, breaching Rs 3 trillion for the first time. Consolidated net profit was Rs 20,946 crore, down 22% YoY, but beat the street estimate of Rs 19,823 crore. The fall is only optical: last year's quarter had a one-time gain of Rs 8,924 crore from asset sales, and excluding one-offs, profit before tax rose 9%. EBITDA rose 11% to Rs 47,517 crore, though margin compressed to 15.4% from 17.6% a year ago. Jio added 8.9 million subscribers to reach 533 million. Management sounded optimistic about the year ahead with the Jio IPO unlock coming."
+  },
+  {
+    "ticker": "INFY",
+    "company": "Infosys",
+    "quarter": "Q1 FY27",
+    "announced": "23 Jul 2026",
+    "source": "Company press release + earnings-call transcript + India Today / Mint",
+    "est_profit": null,
+    "est_revenue": null,
+    "market_reaction_pct": -5.0,
+    "text": "Infosys reported revenue of Rs 48,211 crore, up 14% YoY and 2.4% in constant currency. Net profit was Rs 7,769 crore, up 12% YoY. Operating margin expanded to 21.1%, up 20 bps sequentially. But the company cut its full-year revenue growth guidance to 1.5-3% from 1.5-3.5%, citing macro uncertainty. Large deal wins were strong at $3.6 billion, 61% net new, and AI work is now 8.2% of revenue. Management sounded cautious on demand. The ADR fell 5% after results, and a CEO succession was announced with Ashiss Kumar Dash as CEO-designate."
+  }
+]

@@ -1,4 +1,6 @@
 __pycache__/
 *.pyc
-data/
+data/*
+!data/companies.json
 memos/
+.vercel

@@ -5,109 +5,247 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Earnings-Call Analyzer</title>
 <style>
-body{font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;max-width:760px;margin:32px auto;padding:0 16px;color:#1a1a1a;line-height:1.5}
+body{font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;max-width:780px;margin:32px auto;padding:0 16px;color:#1a1a1a;line-height:1.5}
 h1{font-size:22px;margin-bottom:4px}
 h2{font-size:16px;margin-top:28px;border-bottom:1px solid #ddd;padding-bottom:4px}
 .sub,.note{font-size:13px;color:#555}
 label{display:block;font-size:13px;margin:8px 0 2px;color:#444}
-input,textarea{font:inherit;padding:5px 8px;border:1px solid #bbb}
-input{width:200px}
-textarea{width:100%;height:110px;box-sizing:border-box}
+input,select,textarea{font:inherit;padding:5px 8px;border:1px solid #bbb}
+input,select{width:220px}
+textarea{width:100%;height:130px;box-sizing:border-box}
 button{font:inherit;padding:6px 14px;background:#1a56db;color:#fff;border:none;cursor:pointer;margin:10px 8px 0 0}
 button:hover{background:#1443ad}
+button:disabled{background:#999;cursor:wait}
 button.alt{background:#fff;color:#1a56db;border:1px solid #1a56db}
 table{border-collapse:collapse;margin-top:12px;font-size:14px}
 th,td{border:1px solid #ccc;padding:4px 10px;text-align:left}
 th{background:#f2f2f2;font-weight:600}
+td.num{text-align:right}
 .view{display:inline-block;padding:2px 10px;border:1px solid #333;font-weight:600}
 blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#333;font-size:14px}
 .memo{border:1px solid #ccc;padding:12px 16px;margin-top:12px}
+.memo h3{margin:4px 0}
+pre{background:#f6f6f6;border:1px solid #ddd;padding:10px;font-size:12px;white-space:pre-wrap}
+details{margin-top:8px;font-size:13px}
+#status{margin-top:20px;font-size:13px;color:#555;border-top:1px solid #ddd;padding-top:6px;min-height:20px}
+#status.err{color:#b00020}
+ol.how{font-size:14px}
+ol.how li{margin-bottom:4px}
+.pos{color:#0a6b1a}.neg{color:#b00020}
 </style>
 </head>
 <body>
 <h1>Earnings-Call Analyzer</h1>
-<p class="sub">Paste a transcript, extract KPIs and sentiment, build a memo. Keyword-based demo; swap in an LLM API for production use.</p>
+<p class="sub">Pick a company, load its latest quarter, extract fields, score 8 signals, get a view. Real Q1 FY27 numbers for 3 Indian companies ship with the page; paste any other transcript to analyze it the same way.</p>
 
-<h2>1. Transcript</h2>
-<label>Ticker</label><input id="ticker" value="FINBANK">
-<label>Quarter</label><input id="quarter" value="Q4 FY25">
-<label>Transcript text</label><textarea id="text"></textarea>
-<div>
-<button class="alt" onclick="loadSample(0)">Load Q1 FY25</button><button class="alt" onclick="loadSample(1)">Load Q2 FY25</button><button class="alt" onclick="loadSample(2)">Load Q3 FY25</button>
+<h2>How it works (the whole architecture)</h2>
+<ol class="how">
+<li><b>Input</b> — company + quarter. Either a bundled pack (verified numbers) or your own pasted transcript.</li>
+<li><b>Fetch</b> — tries a live transcripts API if you give a key, else uses the bundled pack. Same fallback pattern as the Python pipeline.</li>
+<li><b>Extract</b> — one fixed "smart prompt" asks an LLM for strict JSON with 8 fields (prompt shown below). With no key, the same 8 fields come from regex rules.</li>
+<li><b>Score</b> — 8 signals, each +1 / 0 / −1, summed. Score ≥ +2 → BUY, ≤ −2 → SELL, else HOLD. Every point is visible in the breakdown table.</li>
+<li><b>Memo</b> — fields table + signal table + one-line reason + view.</li>
+</ol>
+
+<h2>1. Company</h2>
+<label>Company</label>
+<select id="co">
+<option value="HDFCBANK">HDFC Bank — Q1 FY27 (announced 18 Jul 2026)</option>
+<option value="RELIANCE">Reliance Industries — Q1 FY27 (announced 17 Jul 2026)</option>
+<option value="INFY">Infosys — Q1 FY27 (announced 23 Jul 2026)</option>
+<option value="CUSTOM">Custom — paste your own transcript below</option>
+</select>
+<div id="customBox" style="display:none">
+<label>Ticker</label><input id="customTicker" value="CUSTOM">
+<label>Quarter</label><input id="customQ" value="Q1 FY27">
 </div>
-<button onclick="analyzeOne()">Analyze this quarter</button>
+<label>Transcript (editable — condensed from press coverage + company releases)</label>
+<textarea id="text"></textarea>
+<label>Finnhub API key (optional — tries live transcript first, falls back to the pack above)</label>
+<input id="fkey" placeholder="leave blank to use bundled data">
+<br><button id="goBtn" onclick="analyze()">Extract + score + memo</button>
+<details><summary>Show the exact smart prompt sent to the LLM</summary><pre id="promptBox"></pre></details>
 
-<h2>2. Result</h2>
-<table id="one"><tr><th>Quarter</th><th>Sentiment</th><th>KPIs</th></tr></table>
+<h2>2. Extracted fields</h2>
+<table id="fields"><tr><th>Field</th><th>Value</th></tr></table>
 
-<h2>3. Memo (all quarters)</h2>
-<p class="note">Analyzed quarters pile up below. Click again to rebuild the memo from everything so far.</p>
-<button onclick="buildMemo()">Build memo</button>
-<div class="memo" id="memo"><p class="note">No quarters analyzed yet.</p></div>
+<h2>3. Signal scores</h2>
+<table id="scores"><tr><th>#</th><th>Signal</th><th>Reading</th><th>Points</th></tr></table>
+<p class="result">Total: <b id="total">-</b> &nbsp; View: <span class="view" id="view">-</span></p>
+
+<h2>4. Memo</h2>
+<div class="memo" id="memo"><p class="note">Nothing analyzed yet.</p></div>
+
+<div id="status">Ready.</div>
 
 <script>
-var SAMPLES=[
-  {ticker:"FINBANK",quarter:"Q1 FY25",text:"Revenue grew 14% YoY to INR 13,680 Cr. NIM expanded 15 bps. Management guides credit growth 12-14%. Asset quality stable, GNPA 2.1%. Digital lending pipeline up 30%."},
-  {ticker:"FINBANK",quarter:"Q2 FY25",text:"Revenue INR 15,460 Cr (+13% YoY). Fee income drove upside. Opex rose 9% on tech hires. Management flagged NIM pressure from rate cuts. Loan book +11%."},
-  {ticker:"FINBANK",quarter:"Q3 FY25",text:"Revenue INR 17,160 Cr (+11% YoY). Strong deposit growth at 14%. Asset quality improved, GNPA down to 1.9%. NIM stable. Guidance maintained."}
-];
-var POS={grew:1,expanded:1,stable:1,up:1,growth:1,upside:1,improved:1,strong:1,maintained:1};
-var NEG={pressure:1,rose:1,flagged:1,decline:1,miss:1,weak:1,down:1};
-var rows=[];
+// ---------- bundled verified packs (real Q1 FY27 numbers, July 2026) ----------
+var PACKS={
+HDFCBANK:{ticker:"HDFCBANK",company:"HDFC Bank",quarter:"Q1 FY27",announced:"18 Jul 2026",
+source:"Company filing + Moneycontrol / Hindu BusinessLine / Fortune India",
+est_profit:19332,est_revenue:34353,market_reaction_pct:-5.1,
+text:"HDFC Bank reported standalone net profit of Rs 19,060 crore, up 5% YoY, below the street estimate of Rs 19,332 crore. Net interest income was Rs 33,536 crore, up 7% YoY, also below the estimate of Rs 34,353 crore. NIM compressed to 3.4% on interest-earning assets from 3.5% last quarter. Asset quality improved, with GNPA down to 1.17% from 1.40% a year ago. Advances grew 15% YoY, ahead of the system. Management sounded cautious on margins. Shares fell 5.1% on the next trading session."},
+RELIANCE:{ticker:"RELIANCE",company:"Reliance Industries",quarter:"Q1 FY27",announced:"17 Jul 2026",
+source:"Company media release + Business Standard / CNBC-TV18",
+est_profit:19823,est_revenue:300000,market_reaction_pct:null,
+text:"Reliance reported a record revenue of Rs 3.09 lakh crore, up 27% YoY, breaching Rs 3 trillion for the first time. Consolidated net profit was Rs 20,946 crore, down 22% YoY, but beat the street estimate of Rs 19,823 crore. The fall is only optical: last year's quarter had a one-time gain of Rs 8,924 crore from asset sales, and excluding one-offs, profit before tax rose 9%. EBITDA rose 11% to Rs 47,517 crore, though margin compressed to 15.4% from 17.6% a year ago. Jio added 8.9 million subscribers to reach 533 million. Management sounded optimistic about the year ahead with the Jio IPO unlock coming."},
+INFY:{ticker:"INFY",company:"Infosys",quarter:"Q1 FY27",announced:"23 Jul 2026",
+source:"Company press release + earnings-call transcript + India Today / Mint",
+est_profit:null,est_revenue:null,market_reaction_pct:-5.0,
+text:"Infosys reported revenue of Rs 48,211 crore, up 14% YoY and 2.4% in constant currency. Net profit was Rs 7,769 crore, up 12% YoY. Operating margin expanded to 21.1%, up 20 bps sequentially. But the company cut its full-year revenue growth guidance to 1.5-3% from 1.5-3.5%, citing macro uncertainty. Large deal wins were strong at $3.6 billion, 61% net new, and AI work is now 8.2% of revenue. Management sounded cautious on demand. The ADR fell 5% after results, and a CEO succession was announced with Ashiss Kumar Dash as CEO-designate."}
+};
+// the fixed smart prompt — identical in the Python pipeline (extract_kpis.py)
+var PROMPT_TEMPLATE=[
+"You are an equity analyst. Read the earnings excerpt below for {company} ({quarter}).",
+"Return ONLY valid JSON with exactly these fields:",
+'{"revenue": "e.g. Rs 19,060 crore or null", "revenue_growth_yoy_pct": number or null,',
+'"profit": "e.g. Rs 7,769 crore or null", "profit_growth_yoy_pct": number or null,',
+'"profit_vs_estimate": "beat" | "miss" | "na", "margin_direction": "expand" | "compress" | "flat",',
+'"guidance": "raised" | "cut" | "maintained" | "na", "operating": "strong" | "weak" | "mixed",',
+'"tone": "optimistic" | "cautious", "one_off_note": string or null,',
+'"red_flags": ["short strings"]}',
+"Use null / na for anything not stated. No commentary outside the JSON.",
+"Excerpt: {text}"].join("\n");
 
-function extract(text){
-  var kpis={}, m;
-  m=text.match(/Revenue.*?([\d,]+\s*Cr)/); if(m)kpis.revenue=m[1];
-  m=text.match(/NIM.*?(\d+\s*bps)/); if(m)kpis.nim=m[1];
-  m=text.match(/GNPA\s*([\d.]+%)/); if(m)kpis.gnpa=m[1];
-  m=text.match(/Loan book.*?\+(\d+%)/); if(m)kpis.loan_growth=m[1];
-  var pos=0,neg=0;
-  text.toLowerCase().match(/\w+/g).forEach(function(w){
-    if(POS[w])pos++; if(NEG[w])neg++;
-  });
-  var sent=pos>neg?"Positive":(neg>pos?"Negative":"Neutral");
-  return {kpis:kpis,sentiment:sent,pos:pos,neg:neg};
+// ---------- regex fallback: same 8 fields the prompt asks for ----------
+function num(s){ return s?parseFloat(s.replace(/,/g,"")):null; }
+function extractFields(text){
+  var f={revenue:null,revenue_growth_yoy_pct:null,profit:null,profit_growth_yoy_pct:null,
+    profit_vs_estimate:"na",margin_direction:"flat",guidance:"na",operating:"mixed",
+    tone:"cautious",one_off_note:null,red_flags:[]};
+  var m;
+  m=text.match(/(?:revenue|net interest income)[^.]*?([\d,.]+\s*(?:lakh crore|crore|cr))/i);
+  if(m)f.revenue="Rs "+m[1];
+  m=text.match(/(?:revenue|net interest income).{0,80}?(up|down|grew|fell).{0,40}?([\d.]+)%/i);
+  if(m)f.revenue_growth_yoy_pct=(/up|grew/i.test(m[1])?1:-1)*parseFloat(m[2]);
+  m=text.match(/(?:net profit|profit after tax)[^.]*?Rs ([\d,.]+\s*(?:lakh crore|crore|cr))/i);
+  if(m)f.profit="Rs "+m[1];
+  m=text.match(/(?:net profit|profit after tax)[^.]*?(up|down)[^.]*?([\d.]+)%/i);
+  if(m)f.profit_growth_yoy_pct=(m[1].toLowerCase()==="up"?1:-1)*parseFloat(m[2]);
+  if(/beat[^.]*?estimate/i.test(text))f.profit_vs_estimate="beat";
+  else if(/below[^.]*?estimate|missed[^.]*?estimate/i.test(text))f.profit_vs_estimate="miss";
+  if(/margin (expanded|compress|compressed)|NIM (expanded|compressed)/i.test(text))
+    f.margin_direction=/expand/i.test(text.match(/margin[^.]*|NIM[^.]*/i)[0])?"expand":"compress";
+  m=text.match(/guidance.{0,40}?(cut|trimmed|lowered|raised|increased|maintained|retained|unchanged)|(cut|trimmed|lowered|raised|increased|maintained|retained)[^.]{0,60}?guidance/i);
+  if(m){var w=m[1]||m[2];f.guidance=/cut|trimmed|lowered/i.test(w)?"cut":(/raised|increased/i.test(w)?"raised":"maintained");}
+  if(/strong|record|improved|added [\d.]+ million/i.test(text))f.operating="strong";
+  else if(/deteriorated|weak demand|slowed/i.test(text))f.operating="weak";
+  if(/optimistic|confident/i.test(text))f.tone="optimistic";
+  m=text.match(/one-time[^.]*?Rs ([\d,.]+\s*crore)/i);
+  if(m)f.one_off_note="One-time item of Rs "+m[1]+" distorts YoY comparison.";
+  m=text.match(/(?:shares|ADR|stock) (fell|rose|gained|slipped|dropped)[^.]*?([\d.]+)%/i);
+  if(m)f.market_move_pct=(/fell|slipped|dropped/i.test(m[1])?-1:1)*parseFloat(m[2]);
+  if(f.profit_vs_estimate==="miss")f.red_flags.push("Missed street estimates.");
+  if(f.guidance==="cut")f.red_flags.push("Guidance cut.");
+  if(f.margin_direction==="compress")f.red_flags.push("Margin compression.");
+  return f;
 }
-function kpiStr(k){
-  var parts=[];
-  for(var x in k)parts.push(x+"="+k[x]);
-  return parts.join(", ")||"-";
+// ---------- scoring: 8 signals, +1/0/-1 ----------
+function score(f,pack){
+  var s=[];
+  s.push({name:"Profit vs street estimate",reading:f.profit_vs_estimate,
+    pts:f.profit_vs_estimate==="beat"?1:(f.profit_vs_estimate==="miss"?-1:0)});
+  s.push({name:"Revenue growth YoY ("+(f.revenue_growth_yoy_pct==null?"n/a":f.revenue_growth_yoy_pct+"%")+")",
+    reading:f.revenue_growth_yoy_pct==null?"not stated":(f.revenue_growth_yoy_pct>0?"positive":"negative"),
+    pts:f.revenue_growth_yoy_pct==null?0:(f.revenue_growth_yoy_pct>0?1:-1)});
+  s.push({name:"Profit growth YoY ("+(f.profit_growth_yoy_pct==null?"n/a":f.profit_growth_yoy_pct+"%")+")",
+    reading:f.profit_growth_yoy_pct==null?"not stated":(f.profit_growth_yoy_pct>0?"positive":"negative"),
+    pts:f.profit_growth_yoy_pct==null?0:(f.profit_growth_yoy_pct>0?1:-1)});
+  s.push({name:"Margin direction",reading:f.margin_direction,
+    pts:f.margin_direction==="expand"?1:(f.margin_direction==="compress"?-1:0)});
+  s.push({name:"Guidance",reading:f.guidance,
+    pts:f.guidance==="raised"?1:(f.guidance==="cut"?-1:0)});
+  s.push({name:"Operating (asset quality / deals / subs)",reading:f.operating,
+    pts:f.operating==="strong"?1:(f.operating==="weak"?-1:0)});
+  s.push({name:"Management tone",reading:f.tone,pts:f.tone==="optimistic"?1:-1});
+  var mr=(f.market_move_pct!=null)?f.market_move_pct:pack.market_reaction_pct;
+  s.push({name:"Market reaction ("+(mr==null?"n/a":mr+"%")+")",
+    reading:mr==null?"no data":(mr>1?"up":(mr<-1?"down":"flat")),
+    pts:mr==null?0:(mr>1?1:(mr<-1?-1:0))});
+  var total=s.reduce(function(a,x){return a+x.pts;},0);
+  var view=total>=2?"BUY":(total<=-2?"SELL":"HOLD");
+  return {signals:s,total:total,view:view};
 }
-function loadSample(i){
-  document.getElementById("ticker").value=SAMPLES[i].ticker;
-  document.getElementById("quarter").value=SAMPLES[i].quarter;
-  document.getElementById("text").value=SAMPLES[i].text;
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+
+// ---------- page wiring ----------
+function status(msg,isErr){
+  var el=document.getElementById("status");
+  el.textContent=msg; el.className=isErr?"err":"";
 }
-function analyzeOne(){
-  var r={
-    ticker:document.getElementById("ticker").value,
-    quarter:document.getElementById("quarter").value,
-    text:document.getElementById("text").value
-  };
-  var e=extract(r.text);
-  r.kpis=e.kpis; r.sentiment=e.sentiment; r.pos=e.pos; r.neg=e.neg;
-  rows.push(r);
-  document.getElementById("one").innerHTML='<tr><th>Quarter</th><th>Sentiment</th><th>KPIs</th></tr>'+
-    '<tr><td>'+r.quarter+'</td><td>'+r.sentiment+' ('+r.pos+' pos / '+r.neg+' neg)</td><td>'+kpiStr(r.kpis)+'</td></tr>';
+function loadPack(){
+  var k=document.getElementById("co").value;
+  document.getElementById("customBox").style.display=(k==="CUSTOM")?"block":"none";
+  if(k!=="CUSTOM")document.getElementById("text").value=PACKS[k].text;
 }
-function buildMemo(){
-  if(!rows.length)return;
-  var p=0,n=0,i,html='<h2 style="border:none;margin-top:0">'+rows[0].ticker+' Ltd - Earnings Memo</h2>';
-  html+='<table><tr><th>Quarter</th><th>Sentiment</th><th>KPIs</th></tr>';
-  for(i=0;i<rows.length;i++){
-    if(rows[i].sentiment==="Positive")p++;
-    if(rows[i].sentiment==="Negative")n++;
-    html+='<tr><td>'+rows[i].quarter+'</td><td>'+rows[i].sentiment+'</td><td>'+kpiStr(rows[i].kpis)+'</td></tr>';
+function tryLiveFetch(ticker,key){
+  // Finnhub transcripts endpoint; returns [] on any failure -> bundled pack
+  var url="https://finnhub.io/api/v1/stock/transcripts?symbol="+encodeURIComponent(ticker)+"&token="+encodeURIComponent(key);
+  return fetch(url).then(function(r){return r.json();}).then(function(p){
+    var t=(p.transcript||[])[0];
+    return t?t.text||"": "";
+  }).catch(function(){return "";});
+}
+function analyze(){
+  var btn=document.getElementById("goBtn");
+  btn.disabled=true; status("Extracting fields…");
+  var k=document.getElementById("co").value;
+  var pack=k==="CUSTOM"
+    ?{ticker:document.getElementById("customTicker").value,company:document.getElementById("customTicker").value,
+      quarter:document.getElementById("customQ").value,announced:"n/a",source:"pasted by user",
+      est_profit:null,est_revenue:null,market_reaction_pct:null}
+    :PACKS[k];
+  var text=document.getElementById("text").value;
+  var key=document.getElementById("fkey").value.trim();
+  function finish(liveText,sourceNote){
+    setTimeout(function(){ // let the status paint before the (fast) compute
+      var f=extractFields(liveText||text);
+      var r=score(f,pack);
+      var order=["revenue","revenue_growth_yoy_pct","profit","profit_growth_yoy_pct","profit_vs_estimate",
+        "margin_direction","guidance","operating","tone","one_off_note","red_flags"];
+      var fh='<tr><th>Field</th><th>Value</th></tr>';
+      order.forEach(function(k2){
+        var v=f[k2];
+        fh+='<tr><td>'+k2+'</td><td>'+esc(v==null?"—":(typeof v==="object"?JSON.stringify(v):v))+'</td></tr>';
+      });
+      document.getElementById("fields").innerHTML=fh;
+      var sh='<tr><th>#</th><th>Signal</th><th>Reading</th><th>Points</th></tr>';
+      r.signals.forEach(function(s2,i){
+        var cls=s2.pts>0?"pos":(s2.pts<0?"neg":"");
+        sh+='<tr><td>'+(i+1)+'</td><td>'+esc(s2.name)+'</td><td>'+esc(s2.reading)+'</td><td class="num '+cls+'">'+(s2.pts>0?"+":"")+s2.pts+'</td></tr>';
+      });
+      document.getElementById("scores").innerHTML=sh;
+      document.getElementById("total").textContent=(r.total>0?"+":"")+r.total+" / 8 signals";
+      document.getElementById("view").textContent=r.view;
+      var best=r.signals.filter(function(s2){return s2.pts>0;})[0];
+      var worst=r.signals.filter(function(s2){return s2.pts<0;})[0];
+      var why="Driven by "+(best?best.name.toLowerCase():"no clear positive")+
+        (worst?(", weighed down by "+worst.name.toLowerCase()+"."):" with no clear negative.");
+      if(f.one_off_note)why+=" Note: "+f.one_off_note;
+      document.getElementById("memo").innerHTML=
+        '<h3>'+esc(pack.company)+' — '+esc(pack.quarter)+' — <span class="view">'+r.view+'</span></h3>'+
+        '<p class="note">Announced '+esc(pack.announced)+'. Source: '+esc(pack.source)+'. '+(sourceNote||"Fields via keyword fallback (no API key).")+'</p>'+
+        '<blockquote>'+esc((liveText||text).slice(0,600))+'</blockquote>'+
+        '<p>'+esc(why)+'</p>'+
+        (f.red_flags.length?'<p>Red flags: '+esc(f.red_flags.join(" "))+'</p>':"");
+      status("Done. "+pack.ticker+" "+pack.quarter+": score "+(r.total>0?"+":"")+r.total+" → "+r.view+".");
+      btn.disabled=false;
+    },30);
   }
-  html+='</table>';
-  for(i=0;i<rows.length;i++){
-    html+='<p><b>'+rows[i].quarter+' - '+rows[i].sentiment+'</b></p><blockquote>'+rows[i].text+'</blockquote>';
-  }
-  var v=p>n?"BUY":(n>p?"SELL":"HOLD");
-  html+='<p><b>View: <span class="view">'+v+'</span></b> ('+p+' positive vs '+n+' negative quarters)</p>';
-  document.getElementById("memo").innerHTML=html;
+  if(key&&k!=="CUSTOM"){
+    status("Trying live transcript API…");
+    tryLiveFetch(pack.ticker,key).then(function(t){
+      if(t)finish(t,"Fields via live transcript + keyword fallback.");
+      else finish(null,"Live API failed — fell back to bundled pack.");
+    });
+  }else finish(null,null);
 }
-if(typeof document!=="undefined") loadSample(0);
+if(typeof document!=="undefined"){
+  document.getElementById("promptBox").textContent=
+    PROMPT_TEMPLATE.replace("{company}","HDFC Bank").replace("{quarter}","Q1 FY27").replace("{text}","<transcript excerpt…>");
+  document.getElementById("co").addEventListener("change",loadPack);
+  loadPack();
+}
 </script>
 </body>
 </html>

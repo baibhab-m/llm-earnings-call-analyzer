@@ -1,52 +1,53 @@
 """
-Generate investment memo from extracted KPIs.
-Writes Markdown to memos/<TICKER>_memo.md.
+Generate investment memo from scored fields.
+Writes Markdown to memos/<TICKER>_memo.md, one file per company.
 """
 import json
 from pathlib import Path
 
 INPUT_PATH = "data/kpis.json"
 
-POSITIVE_QUARTERS = 0
-NEGATIVE_QUARTERS = 0
+
+def render(rec):
+    t = rec["ticker"]
+    lines = [f"# {t} - Earnings Memo ({rec['quarter']})", ""]
+    f = rec["fields"]
+    lines.append("| Field | Value |")
+    lines.append("|---|---|")
+    for k in ["revenue", "revenue_growth_yoy_pct", "profit", "profit_growth_yoy_pct",
+              "profit_vs_estimate", "margin_direction", "guidance", "operating",
+              "tone", "one_off_note", "red_flags"]:
+        lines.append(f"| {k} | {f.get(k, '—')} |")
+    lines.append("")
+    lines.append("| # | Signal | Reading | Points |")
+    lines.append("|---|---|---|---|")
+    for i, s in enumerate(rec["signals"], 1):
+        lines.append(f"| {i} | {s['name']} | {s['reading']} | {s['pts']:+d} |")
+    lines.append("")
+    pos = [s["name"] for s in rec["signals"] if s["pts"] > 0]
+    neg = [s["name"] for s in rec["signals"] if s["pts"] < 0]
+    why = f"Driven by {pos[0].lower() if pos else 'no clear positive'}" + \
+          (f", weighed down by {neg[0].lower()}." if neg else " with no clear negative.")
+    if f.get("one_off_note"):
+        why += " Note: " + f["one_off_note"]
+    lines.append(f"**View: {rec['view']}** (score {rec['total']:+d} across 8 signals)")
+    lines.append("")
+    lines.append(why)
+    if f.get("red_flags"):
+        lines.append("")
+        lines.append("Red flags: " + " ".join(f["red_flags"]))
+    lines.append("")
+    lines.append(f"> {rec['text']}")
+    return "\n".join(lines)
 
 
-def render(rows):
-    global POSITIVE_QUARTERS, NEGATIVE_QUARTERS
-    POSITIVE_QUARTERS = sum(1 for r in rows if r.get("sentiment") == "Positive")
-    NEGATIVE_QUARTERS = sum(1 for r in rows if r.get("sentiment") == "Negative")
-
-    md = [f"# {rows[0]['ticker']} Ltd - Earnings Memo (synthetic)", ""]
-    md.append("| Quarter | Sentiment | KPIs | Source |")
-    md.append("|---|---|---|---|")
-    for r in rows:
-        kpis = ", ".join(f"{k}={v}" for k, v in r.get("kpis", {}).items()) or "-"
-        md.append(f"| {r['quarter']} | {r.get('sentiment','-')} | {kpis} | {r.get('source','-')} |")
-    md.append("")
-
-    for r in rows:
-        md.append(f"### {r['quarter']} - {r.get('sentiment','-')}")
-        md.append(f"> {r['text']}")
-        md.append("")
-
-    if POSITIVE_QUARTERS > NEGATIVE_QUARTERS:
-        view = "BUY"
-    elif NEGATIVE_QUARTERS > POSITIVE_QUARTERS:
-        view = "SELL"
-    else:
-        view = "HOLD"
-    md.append(f"**View: {view}** ({POSITIVE_QUARTERS} positive vs {NEGATIVE_QUARTERS} negative quarters)")
-    return "\n".join(md), view
-
-
-def generate(in_path=INPUT_PATH, out_path=None):
+def generate(in_path=INPUT_PATH, out_dir="memos"):
     rows = json.loads(Path(in_path).read_text(encoding="utf-8"))
-    out_path = out_path or f"memos/{rows[0]['ticker']}_memo.md"
-    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-    body, view = render(rows)
-    Path(out_path).write_text(body, encoding="utf-8")
-    print(f"  wrote memo to {out_path}  (view: {view})")
-    return out_path
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
+    for rec in rows:
+        path = Path(out_dir) / f"{rec['ticker']}_memo.md"
+        path.write_text(render(rec), encoding="utf-8")
+        print(f"  wrote memo to {path}  (view: {rec['view']})")
 
 
 if __name__ == "__main__":
