@@ -10,7 +10,13 @@ Python/LLM pipeline that takes a company, pulls its latest earnings call, extrac
 5. **Memo** - fields table + signal breakdown + one-line reason + view.
 
 ## Real data
-`data/companies.json` ships verified Q1 FY27 packs (July 2026) for HDFC Bank, Reliance Industries, and Infosys - condensed excerpts with real reported numbers, estimates where published, and post-results price reaction. Current output: HDFC HOLD (−1), Reliance BUY (+2), Infosys HOLD (+1).
+`data/companies.json` ships verbatim excerpts from the official Q1 FY27 sources
+(HDFC Bank earnings-call transcript PDF, Reliance media release + webcast, Infosys
+earnings-call transcript + press release - source URLs in each pack) with real
+reported numbers, street estimates where published, and post-results price reaction.
+Regex path gives HDFC HOLD (−1), Reliance BUY (+2), Infosys HOLD (+1);
+live-LLM readings can differ by a point where the model judges operating/tone
+differently, and the memo always shows which path produced the fields.
 
 ## Run
 ```bash

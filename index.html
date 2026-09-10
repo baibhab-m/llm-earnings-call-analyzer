@@ -84,20 +84,13 @@ ol.how li{margin-bottom:4px}
 
 <script>
 // ---------- bundled verified packs (real Q1 FY27 numbers, July 2026) ----------
+// PACKS-START (auto-synced from data/companies.json - do not hand-edit)
 var PACKS={
-HDFCBANK:{ticker:"HDFCBANK",company:"HDFC Bank",quarter:"Q1 FY27",announced:"18 Jul 2026",
-source:"Company filing + Moneycontrol / Hindu BusinessLine / Fortune India",
-est_profit:19332,est_revenue:34353,market_reaction_pct:-5.1,
-text:"HDFC Bank reported standalone net profit of Rs 19,060 crore, up 5% YoY, below the street estimate of Rs 19,332 crore. Net interest income was Rs 33,536 crore, up 7% YoY, also below the estimate of Rs 34,353 crore. NIM compressed to 3.4% on interest-earning assets from 3.5% last quarter. Asset quality improved, with GNPA down to 1.17% from 1.40% a year ago. Advances grew 15% YoY, ahead of the system. Management sounded cautious on margins. Shares fell 5.1% on the next trading session."},
-RELIANCE:{ticker:"RELIANCE",company:"Reliance Industries",quarter:"Q1 FY27",announced:"17 Jul 2026",
-source:"Company media release + Business Standard / CNBC-TV18",
-est_profit:19823,est_revenue:300000,market_reaction_pct:null,
-text:"Reliance reported a record revenue of Rs 3.09 lakh crore, up 27% YoY, breaching Rs 3 trillion for the first time. Consolidated net profit was Rs 20,946 crore, down 22% YoY, but beat the street estimate of Rs 19,823 crore. The fall is only optical: last year's quarter had a one-time gain of Rs 8,924 crore from asset sales, and excluding one-offs, profit before tax rose 9%. EBITDA rose 11% to Rs 47,517 crore, though margin compressed to 15.4% from 17.6% a year ago. Jio added 8.9 million subscribers to reach 533 million. Management sounded optimistic about the year ahead with the Jio IPO unlock coming."},
-INFY:{ticker:"INFY",company:"Infosys",quarter:"Q1 FY27",announced:"23 Jul 2026",
-source:"Company press release + earnings-call transcript + India Today / Mint",
-est_profit:null,est_revenue:null,market_reaction_pct:-5.0,
-text:"Infosys reported revenue of Rs 48,211 crore, up 14% YoY and 2.4% in constant currency. Net profit was Rs 7,769 crore, up 12% YoY. Operating margin expanded to 21.1%, up 20 bps sequentially. But the company cut its full-year revenue growth guidance to 1.5-3% from 1.5-3.5%, citing macro uncertainty. Large deal wins were strong at $3.6 billion, 61% net new, and AI work is now 8.2% of revenue. Management sounded cautious on demand. The ADR fell 5% after results, and a CEO succession was announced with Ashiss Kumar Dash as CEO-designate."}
+HDFCBANK:{ticker:"HDFCBANK",company:"HDFC Bank",quarter:"Q1 FY27",announced:"18 Jul 2026",source:"Official Q1 FY27 earnings-call transcript (16 pages) + company filing",source_url:"https://www.hdfc.bank.in/content/dam/hdfcbankpws/in/en/pdf/about-us/financial-results/2026-2027/quarter-1/hdfc-bank-earnings-jul18-2026.pdf",text:"HDFC Bank reported standalone net profit of Rs 19,060 crore for Q1 FY27, up 5% year-on-year but below the street estimate of Rs 19,332 crore. Net interest income grew 7% to Rs 33,536 crore, also below the estimate of Rs 34,353 crore. On the earnings call, CEO Sashidhar Jagdishan said: 'we navigated during this period certain challenges over the last four months... deposit growth continues to be relatively better than the historical Q1 trends. We continue to gain market share both on an incremental basis and on a stock basis as well.' Asked whether margins have bottomed out, CFO Srinivasan Vaidyanathan replied that 'the cost of funds is the biggest opportunity on the margin... there can be 40, 50 basis points change, but it is not going to change in a hurry.' Net interest margin stood at 3.4%, down from 3.5% last quarter. Asset quality stayed strong with GNPA at 1.17%, down from 1.40% a year ago. Advances grew 15%, ahead of the banking system. Shares fell 5.1% on the next trading session.",est_profit:19332,est_revenue:34353,market_reaction_pct:-5.1},
+RELIANCE:{ticker:"RELIANCE",company:"Reliance Industries",quarter:"Q1 FY27",announced:"17 Jul 2026",source:"Official Q1 FY27 media release + analyst webcast (ril.com)",source_url:"https://www.ril.com/sites/default/files/2026-07/Media_Release_RIL_Q1_FY2026-27_Financial_and_Operational_Performance.pdf",text:"Reliance reported consolidated revenue of Rs 340,257 crore for Q1 FY27, up 24.5% year-on-year, with record recurring EBITDA of Rs 54,067 crore, up 10.1%. Net profit attributable to owners was Rs 20,946 crore, down 22% from Rs 26,994 crore a year ago, but beat the street estimate of Rs 19,823 crore. The year-ago quarter had included a one-time gain of Rs 8,924 crore from asset sales. Chairman Mukesh Ambani said: 'Reliance has made a steady start to FY27, with all businesses delivering strong operating performance... demonstrated its resilience in a quarter which witnessed continuing geopolitical tensions and volatile commodity markets.' He added that Jio Platforms has filed its DRHP with SEBI, 'a significant step towards its public listing', that Reliance Retail 'delivered resilient growth this quarter', and that he is 'confident that it is well placed to benefit from long term consumption growth'. Jio ended June with 533.3 million subscribers after adding 8.9 million during the quarter. EBITDA margin compressed to 15.4% from 17.6% a year ago.",est_profit:19823,est_revenue:300000,market_reaction_pct:null},
+INFY:{ticker:"INFY",company:"Infosys",quarter:"Q1 FY27",announced:"23 Jul 2026",source:"Official Q1 FY27 earnings-call transcript + company press release",source_url:"https://www.infosys.com/investors/reports-filings/quarterly-results/2026-2027/q1/documents/transcripts/earningscall.pdf",text:"Infosys reported revenue of Rs 48,211 crore for Q1 FY27, up 14% year-on-year and 2.4% in constant currency. Net profit was Rs 7,769 crore, up 12% year-on-year. CEO Salil Parekh said on the call: 'Our revenue growth for Q1 was 2.4% year-on-year and 1% quarter-on-quarter in constant currency terms. We had a onetime revenue impact of a client decision during this quarter. Our AI services revenue was 8.2% of overall revenue. Our large deals were $3.6 billion with a net new of 61%. Our operating margin was 21.1%.' Operating margin expanded to 21.1%, up 20 bps sequentially. CFO Jayesh Sanghrajka added there was a 'one-off 50 basis point impact on account of program termination' by a client and that 'volumes were soft'. The company cut its full-year revenue growth guidance to 1.5% to 3% from 1.5% to 3.5%, citing macro uncertainty, while operating margin guidance stays at 20% to 22%. Large deal wins were strong at $3.6 billion, 61% net new. The ADR fell 5% after results.",est_profit:null,est_revenue:null,market_reaction_pct:-5.0}
 };
+// PACKS-END
 // the fixed smart prompt — identical in the Python pipeline (extract_kpis.py)
 var PROMPT_TEMPLATE=[
 "You are an equity analyst. Read the earnings excerpt below for {company} ({quarter}).",
@@ -128,15 +121,15 @@ function extractFields(text){
   if(m)f.profit_growth_yoy_pct=(m[1].toLowerCase()==="up"?1:-1)*parseFloat(m[2]);
   if(/beat[^.]*?estimate/i.test(text))f.profit_vs_estimate="beat";
   else if(/below[^.]*?estimate|missed[^.]*?estimate/i.test(text))f.profit_vs_estimate="miss";
-  if(/margin (expanded|compress|compressed)|NIM (expanded|compressed)/i.test(text))
-    f.margin_direction=/expand/i.test(text.match(/margin[^.]*|NIM[^.]*/i)[0])?"expand":"compress";
+  var mm=text.match(/margin.{0,60}?(expanded|expand\w*|compress\w*|down from|up from)|NIM.{0,60}?(expanded|compressed)/i);
+  if(mm){var mw=(mm[1]||mm[2]).toLowerCase();f.margin_direction=(/expand|up from/.test(mw))?"expand":"compress";}
   m=text.match(/guidance.{0,40}?(cut|trimmed|lowered|raised|increased|maintained|retained|unchanged)|(cut|trimmed|lowered|raised|increased|maintained|retained)[^.]{0,60}?guidance/i);
   if(m){var w=m[1]||m[2];f.guidance=/cut|trimmed|lowered/i.test(w)?"cut":(/raised|increased/i.test(w)?"raised":"maintained");}
-  if(/strong|record|improved|added [\d.]+ million/i.test(text))f.operating="strong";
+  if(/strong|record|improved|gain|added [\d.]+ million/i.test(text))f.operating="strong";
   else if(/deteriorated|weak demand|slowed/i.test(text))f.operating="weak";
   if(/optimistic|confident/i.test(text))f.tone="optimistic";
-  m=text.match(/one-time[^.]*?Rs ([\d,.]+\s*crore)/i);
-  if(m)f.one_off_note="One-time item of Rs "+m[1]+" distorts YoY comparison.";
+  m=text.match(/(one-time|one-off)[^.]{0,80}?(Rs [\d,.]+\s*crore|[\d.]+ basis point)/i);
+  if(m)f.one_off_note="One-off mentioned ("+m[0].trim()+") — YoY comparison may be distorted.";
   m=text.match(/(?:shares|ADR|stock) (fell|rose|gained|slipped|dropped)[^.]*?([\d.]+)%/i);
   if(m)f.market_move_pct=(/fell|slipped|dropped/i.test(m[1])?-1:1)*parseFloat(m[2]);
   if(f.profit_vs_estimate==="miss")f.red_flags.push("Missed street estimates.");
@@ -270,7 +263,7 @@ function analyze(){
   var model=document.getElementById("model").value.trim()||"MiniMax-M2.7";
   if(lk){
     status("Asking "+prov+" LLM… (key stays in this page)");
-    var prompt=PROMPT_TEMPLATE.replace("{company}",pack.company).replace("{quarter}",pack.quarter).replace("{text}",text.slice(0,3000));
+    var prompt=PROMPT_TEMPLATE.replace("{company}",pack.company).replace("{quarter}",pack.quarter).replace("{text}",text.slice(0,6000));
     llmExtract(prov,lk,model,prompt).then(function(f){
       f.llm_provider=prov; finish(f,text,"Fields via "+prov+" LLM ("+model+").");
     }).catch(function(){

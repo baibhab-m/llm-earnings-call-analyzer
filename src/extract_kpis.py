@@ -76,7 +76,7 @@ def _post_json(url, key, payload):
 def llm_extract(pack):
     """Try OpenRouter, then MiniMax, then OpenAI. Returns fields dict or None."""
     prompt = PROMPT_TEMPLATE.format(company=pack.get("company", pack["ticker"]),
-                                    quarter=pack.get("quarter", "?"), text=pack["text"][:3000])
+                                       quarter=pack.get("quarter", "?"), text=pack["text"][:6000])
     providers = []
     if os.environ.get("OPENROUTER_API_KEY"):
         providers.append(("openrouter", "https://openrouter.ai/api/v1/chat/completions",
@@ -125,23 +125,24 @@ def regex_extract(text):
         f["profit_vs_estimate"] = "beat"
     elif re.search(r"below[^.]*?estimate|missed[^.]*?estimate", text, re.I):
         f["profit_vs_estimate"] = "miss"
-    m = re.search(r"margin (expanded|compress\w*)|NIM (expanded|compressed)", text, re.I)
+    m = re.search(r"margin.{0,60}?(expanded|expand\w*|compress\w*|down from|up from)|NIM.{0,60}?(expanded|compressed)", text, re.I)
     if m:
-        f["margin_direction"] = "expand" if "expand" in (m.group(1) or m.group(2)).lower() else "compress"
+        w = (m.group(1) or m.group(2)).lower()
+        f["margin_direction"] = "expand" if re.search(r"expand|up from", w) else "compress"
     m = re.search(r"guidance.{0,40}?(cut|trimmed|lowered|raised|increased|maintained|retained|unchanged)"
                   r"|(cut|trimmed|lowered|raised|increased|maintained|retained)[^.]{0,60}?guidance", text, re.I)
     if m:
         w = (m.group(1) or m.group(2)).lower()
         f["guidance"] = "cut" if re.match(r"cut|trimmed|lowered", w) else ("raised" if re.match(r"raised|increased", w) else "maintained")
-    if re.search(r"strong|record|improved|added [\d.]+ million", text, re.I):
+    if re.search(r"strong|record|improved|gain|added [\d.]+ million", text, re.I):
         f["operating"] = "strong"
     elif re.search(r"deteriorated|weak demand|slowed", text, re.I):
         f["operating"] = "weak"
     if re.search(r"optimistic|confident", text, re.I):
         f["tone"] = "optimistic"
-    m = re.search(r"one-time[^.]*?Rs ([\d,.]+\s*crore)", text, re.I)
+    m = re.search(r"(one-time|one-off)[^.]{0,80}?(Rs [\d,.]+\s*crore|[\d.]+ basis point)", text, re.I)
     if m:
-        f["one_off_note"] = f"One-time item of Rs {m.group(1)} distorts YoY comparison."
+        f["one_off_note"] = f"One-off mentioned ({m.group(0).strip()}) — YoY comparison may be distorted."
     m = re.search(r"(?:shares|ADR|stock) (fell|rose|gained|slipped|dropped)[^.]*?([\d.]+)%", text, re.I)
     if m:
         f["market_move_pct"] = (-1 if m.group(1).lower() in ("fell", "slipped", "dropped") else 1) * float(m.group(2))
