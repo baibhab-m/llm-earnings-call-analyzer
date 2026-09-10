@@ -26,6 +26,7 @@ Without keys, the pipeline runs on synthetic samples and regex extraction.
 - `data/transcripts.json` - raw transcripts
 - `data/kpis.json` - extracted KPIs + sentiment per quarter
 - `memos/FINBANK_memo.md` - investment memo
+- `index.html` - same analyzer as a single page in the browser, just open it
 
 ## Note
 Synthetic samples ship with the repo so it runs end-to-end without API keys.

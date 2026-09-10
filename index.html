@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Earnings-Call Analyzer</title>
+<style>
+body{font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;max-width:760px;margin:32px auto;padding:0 16px;color:#1a1a1a;line-height:1.5}
+h1{font-size:22px;margin-bottom:4px}
+h2{font-size:16px;margin-top:28px;border-bottom:1px solid #ddd;padding-bottom:4px}
+.sub,.note{font-size:13px;color:#555}
+label{display:block;font-size:13px;margin:8px 0 2px;color:#444}
+input,textarea{font:inherit;padding:5px 8px;border:1px solid #bbb}
+input{width:200px}
+textarea{width:100%;height:110px;box-sizing:border-box}
+button{font:inherit;padding:6px 14px;background:#1a56db;color:#fff;border:none;cursor:pointer;margin:10px 8px 0 0}
+button:hover{background:#1443ad}
+button.alt{background:#fff;color:#1a56db;border:1px solid #1a56db}
+table{border-collapse:collapse;margin-top:12px;font-size:14px}
+th,td{border:1px solid #ccc;padding:4px 10px;text-align:left}
+th{background:#f2f2f2;font-weight:600}
+.view{display:inline-block;padding:2px 10px;border:1px solid #333;font-weight:600}
+blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#333;font-size:14px}
+.memo{border:1px solid #ccc;padding:12px 16px;margin-top:12px}
+</style>
+</head>
+<body>
+<h1>Earnings-Call Analyzer</h1>
+<p class="sub">Paste a transcript, extract KPIs and sentiment, build a memo. Keyword-based demo; swap in an LLM API for production use.</p>
+
+<h2>1. Transcript</h2>
+<label>Ticker</label><input id="ticker" value="FINBANK">
+<label>Quarter</label><input id="quarter" value="Q4 FY25">
+<label>Transcript text</label><textarea id="text"></textarea>
+<div>
+<button class="alt" onclick="loadSample(0)">Load Q1 FY25</button><button class="alt" onclick="loadSample(1)">Load Q2 FY25</button><button class="alt" onclick="loadSample(2)">Load Q3 FY25</button>
+</div>
+<button onclick="analyzeOne()">Analyze this quarter</button>
+
+<h2>2. Result</h2>
+<table id="one"><tr><th>Quarter</th><th>Sentiment</th><th>KPIs</th></tr></table>
+
+<h2>3. Memo (all quarters)</h2>
+<p class="note">Analyzed quarters pile up below. Click again to rebuild the memo from everything so far.</p>
+<button onclick="buildMemo()">Build memo</button>
+<div class="memo" id="memo"><p class="note">No quarters analyzed yet.</p></div>
+
+<script>
+var SAMPLES=[
+  {ticker:"FINBANK",quarter:"Q1 FY25",text:"Revenue grew 14% YoY to INR 13,680 Cr. NIM expanded 15 bps. Management guides credit growth 12-14%. Asset quality stable, GNPA 2.1%. Digital lending pipeline up 30%."},
+  {ticker:"FINBANK",quarter:"Q2 FY25",text:"Revenue INR 15,460 Cr (+13% YoY). Fee income drove upside. Opex rose 9% on tech hires. Management flagged NIM pressure from rate cuts. Loan book +11%."},
+  {ticker:"FINBANK",quarter:"Q3 FY25",text:"Revenue INR 17,160 Cr (+11% YoY). Strong deposit growth at 14%. Asset quality improved, GNPA down to 1.9%. NIM stable. Guidance maintained."}
+];
+var POS={grew:1,expanded:1,stable:1,up:1,growth:1,upside:1,improved:1,strong:1,maintained:1};
+var NEG={pressure:1,rose:1,flagged:1,decline:1,miss:1,weak:1,down:1};
+var rows=[];
+
+function extract(text){
+  var kpis={}, m;
+  m=text.match(/Revenue.*?([\d,]+\s*Cr)/); if(m)kpis.revenue=m[1];
+  m=text.match(/NIM.*?(\d+\s*bps)/); if(m)kpis.nim=m[1];
+  m=text.match(/GNPA\s*([\d.]+%)/); if(m)kpis.gnpa=m[1];
+  m=text.match(/Loan book.*?\+(\d+%)/); if(m)kpis.loan_growth=m[1];
+  var pos=0,neg=0;
+  text.toLowerCase().match(/\w+/g).forEach(function(w){
+    if(POS[w])pos++; if(NEG[w])neg++;
+  });
+  var sent=pos>neg?"Positive":(neg>pos?"Negative":"Neutral");
+  return {kpis:kpis,sentiment:sent,pos:pos,neg:neg};
+}
+function kpiStr(k){
+  var parts=[];
+  for(var x in k)parts.push(x+"="+k[x]);
+  return parts.join(", ")||"-";
+}
+function loadSample(i){
+  document.getElementById("ticker").value=SAMPLES[i].ticker;
+  document.getElementById("quarter").value=SAMPLES[i].quarter;
+  document.getElementById("text").value=SAMPLES[i].text;
+}
+function analyzeOne(){
+  var r={
+    ticker:document.getElementById("ticker").value,
+    quarter:document.getElementById("quarter").value,
+    text:document.getElementById("text").value
+  };
+  var e=extract(r.text);
+  r.kpis=e.kpis; r.sentiment=e.sentiment; r.pos=e.pos; r.neg=e.neg;
+  rows.push(r);
+  document.getElementById("one").innerHTML='<tr><th>Quarter</th><th>Sentiment</th><th>KPIs</th></tr>'+
+    '<tr><td>'+r.quarter+'</td><td>'+r.sentiment+' ('+r.pos+' pos / '+r.neg+' neg)</td><td>'+kpiStr(r.kpis)+'</td></tr>';
+}
+function buildMemo(){
+  if(!rows.length)return;
+  var p=0,n=0,i,html='<h2 style="border:none;margin-top:0">'+rows[0].ticker+' Ltd - Earnings Memo</h2>';
+  html+='<table><tr><th>Quarter</th><th>Sentiment</th><th>KPIs</th></tr>';
+  for(i=0;i<rows.length;i++){
+    if(rows[i].sentiment==="Positive")p++;
+    if(rows[i].sentiment==="Negative")n++;
+    html+='<tr><td>'+rows[i].quarter+'</td><td>'+rows[i].sentiment+'</td><td>'+kpiStr(rows[i].kpis)+'</td></tr>';
+  }
+  html+='</table>';
+  for(i=0;i<rows.length;i++){
+    html+='<p><b>'+rows[i].quarter+' - '+rows[i].sentiment+'</b></p><blockquote>'+rows[i].text+'</blockquote>';
+  }
+  var v=p>n?"BUY":(n>p?"SELL":"HOLD");
+  html+='<p><b>View: <span class="view">'+v+'</span></b> ('+p+' positive vs '+n+' negative quarters)</p>';
+  document.getElementById("memo").innerHTML=html;
+}
+if(typeof document!=="undefined") loadSample(0);
+</script>
+</body>
+</html>
