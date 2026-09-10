@@ -1,16 +1,31 @@
 # LLM Earnings-Call Analyzer
 
-AI-Powered Credit Memo Automation — Python, LLMs, APIs
-
-Built Python-LLM pipeline pulling earnings transcripts via APIs, extracting KPIs and sentiment to generate research memos.
+Python/LLM pipeline that pulls earnings-call transcripts via API (Finnhub), extracts KPIs and sentiment, and generates an investment memo.
 
 ## Pipeline
-1. src/pull_transcripts.py — pulls (synthetic) transcripts via API, writes data/transcripts.json`n2. src/extract_kpis.py — prompt-engineered LLM extraction (falls back to regex if no API key), writes data/kpis.json`n3. src/generate_memo.py — generates memos/FINBANK_memo.md`n
-## Run
-``npython src/pull_transcripts.py
-python src/extract_kpis.py
-python src/generate_memo.py
-``n
-## Notes
-Synthetic transcripts for FinBank Ltd — replace SAMPLE_TRANSCRIPTS with real API. Illustrative sentiment/memo.
+1. **pull** - fetch transcripts via Finnhub API (or fall back to synthetic samples)
+2. **extract** - LLM (OpenAI-compatible) extracts KPIs + sentiment, with regex/lexicon fallback when no API key
+3. **memo** - render Markdown memo with view (BUY / HOLD / SELL)
 
+## Run
+```bash
+pip install -r requirements.txt
+python main.py
+```
+
+To enable live API:
+```bash
+set FINNHUB_API_KEY=your_key_here
+set OPENAI_API_KEY=your_key_here
+python main.py
+```
+
+Without keys, the pipeline runs on synthetic samples and regex extraction.
+
+## Outputs
+- `data/transcripts.json` - raw transcripts
+- `data/kpis.json` - extracted KPIs + sentiment per quarter
+- `memos/FINBANK_memo.md` - investment memo
+
+## Note
+Synthetic samples ship with the repo so it runs end-to-end without API keys.
