@@ -25,26 +25,83 @@ Use null / na for anything not stated. No commentary outside the JSON.
 Excerpt: {text}"""
 
 
+def _clean_json(text):
+    """Strip thinking blocks / fences, return parsed object."""
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.S).strip()
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
+    if m:
+        text = m.group(1)
+    else:
+        s, e = text.find("{"), text.rfind("}")
+        if s != -1 and e != -1:
+            text = text[s:e + 1]
+    return json.loads(text)
+
+
+def _normalize_llm(obj):
+    """Force the 8 prompt fields + red_flags; fill safe defaults for missing."""
+    f = {"revenue": None, "revenue_growth_yoy_pct": None, "profit": None,
+         "profit_growth_yoy_pct": None, "profit_vs_estimate": "na",
+         "margin_direction": "flat", "guidance": "na", "operating": "mixed",
+         "tone": "cautious", "one_off_note": None, "red_flags": []}
+    if not isinstance(obj, dict):
+        return None
+    for k in f:
+        if k in obj and obj[k] not in ("",):
+            f[k] = obj[k]
+    if f["profit_vs_estimate"] not in ("beat", "miss", "na"):
+        f["profit_vs_estimate"] = "na"
+    if f["margin_direction"] not in ("expand", "compress", "flat"):
+        f["margin_direction"] = "flat"
+    if f["guidance"] not in ("raised", "cut", "maintained", "na"):
+        f["guidance"] = "na"
+    if f["operating"] not in ("strong", "weak", "mixed"):
+        f["operating"] = "mixed"
+    if f["tone"] not in ("optimistic", "cautious"):
+        f["tone"] = "cautious"
+    if not isinstance(f["red_flags"], list):
+        f["red_flags"] = []
+    f["source"] = "llm"
+    return f
+
+
+def _post_json(url, key, payload):
+    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
+                                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        data = json.loads(r.read().decode("utf-8"))
+    return data["choices"][0]["message"]["content"]
+
+
 def llm_extract(pack):
-    """Call OpenAI-compatible chat completions. Returns None on any failure."""
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        return None
-    try:
-        prompt = PROMPT_TEMPLATE.format(company=pack.get("company", pack["ticker"]),
-                                       quarter=pack.get("quarter", "?"), text=pack["text"][:3000])
-        body = {"model": "gpt-4o-mini",
-                "messages": [{"role": "user", "content": prompt}],
-                "response_format": {"type": "json_object"}}
-        req = urllib.request.Request(
-            "https://api.openai.com/v1/chat/completions",
-            data=json.dumps(body).encode("utf-8"),
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=30) as r:
-            data = json.loads(r.read().decode("utf-8"))
-        return json.loads(data["choices"][0]["message"]["content"])
-    except Exception:
-        return None
+    """Try OpenRouter, then MiniMax, then OpenAI. Returns fields dict or None."""
+    prompt = PROMPT_TEMPLATE.format(company=pack.get("company", pack["ticker"]),
+                                    quarter=pack.get("quarter", "?"), text=pack["text"][:3000])
+    providers = []
+    if os.environ.get("OPENROUTER_API_KEY"):
+        providers.append(("openrouter", "https://openrouter.ai/api/v1/chat/completions",
+                          os.environ["OPENROUTER_API_KEY"],
+                          os.environ.get("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")))
+    if os.environ.get("MINIMAX_API_KEY"):
+        providers.append(("minimax",
+                          os.environ.get("MINIMAX_BASE_URL", "https://api.minimax.io/v1").rstrip("/") + "/chat/completions",
+                          os.environ["MINIMAX_API_KEY"],
+                          os.environ.get("MINIMAX_MODEL", "MiniMax-M2.1")))
+    if os.environ.get("OPENAI_API_KEY"):
+        providers.append(("openai", "https://api.openai.com/v1/chat/completions",
+                          os.environ["OPENAI_API_KEY"], "gpt-4o-mini"))
+    for name, url, key, model in providers:
+        try:
+            raw = _post_json(url, key, {"model": model,
+                                        "messages": [{"role": "user", "content": prompt}],
+                                        "temperature": 0, "max_tokens": 4000})
+            f = _normalize_llm(_clean_json(raw))
+            if f:
+                f["llm_provider"] = name
+                return f
+        except Exception as e:
+            print(f"  llm via {name} failed ({e}), trying next…")
+    return None
 
 
 def regex_extract(text):

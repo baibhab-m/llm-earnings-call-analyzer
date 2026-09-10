@@ -18,14 +18,17 @@ pip install -r requirements.txt
 python main.py
 ```
 
-To enable live API:
+To enable the real LLM path (OpenRouter free models, MiniMax, or OpenAI):
 ```bash
-set FINNHUB_API_KEY=your_key_here
+set OPENROUTER_API_KEY=your_key_here
+set MINIMAX_API_KEY=your_key_here
 set OPENAI_API_KEY=your_key_here
 python main.py
 ```
 
 Without keys, the pipeline runs on the bundled packs and regex extraction.
+In the web app, paste a key into the LLM box (provider + model selectable) -
+it stays in the page memory only and is never stored or committed.
 
 ## Outputs
 - `data/transcripts.json` - raw transcripts (per run)

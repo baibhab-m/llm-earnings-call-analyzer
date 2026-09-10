@@ -63,6 +63,10 @@ ol.how li{margin-bottom:4px}
 <textarea id="text"></textarea>
 <label>Finnhub API key (optional — tries live transcript first, falls back to the pack above)</label>
 <input id="fkey" placeholder="leave blank to use bundled data">
+<label>LLM provider (optional — real model extraction instead of keywords)</label>
+<select id="prov"><option value="minimax">MiniMax</option><option value="openrouter">OpenRouter</option><option value="openai">OpenAI</option></select>
+<label>Model</label><input id="model" value="MiniMax-M2.7">
+<label>API key (optional — stays in this page only, never stored or sent anywhere except the provider)</label><input id="lkey" type="password" placeholder="paste key, blank = keyword fallback">
 <br><button id="goBtn" onclick="analyze()">Extract + score + memo</button>
 <details><summary>Show the exact smart prompt sent to the LLM</summary><pre id="promptBox"></pre></details>
 
@@ -186,6 +190,35 @@ function tryLiveFetch(ticker,key){
     return t?t.text||"": "";
   }).catch(function(){return "";});
 }
+function parseLLM(t){
+  t=t.replace(/<think>[\s\S]*?<\/think>/g,"");
+  var m=t.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/)||t.match(/(\{[\s\S]*\})/);
+  var o=JSON.parse(m?m[1]:t);
+  var d={revenue:null,revenue_growth_yoy_pct:null,profit:null,profit_growth_yoy_pct:null,
+    profit_vs_estimate:"na",margin_direction:"flat",guidance:"na",operating:"mixed",
+    tone:"cautious",one_off_note:null,red_flags:[]};
+  if(!o||typeof o!=="object")throw new Error("not json");
+  for(var k in d)if(k in o&&o[k]!=="")d[k]=o[k];
+  if(["beat","miss","na"].indexOf(d.profit_vs_estimate)<0)d.profit_vs_estimate="na";
+  if(["expand","compress","flat"].indexOf(d.margin_direction)<0)d.margin_direction="flat";
+  if(["raised","cut","maintained","na"].indexOf(d.guidance)<0)d.guidance="na";
+  if(["strong","weak","mixed"].indexOf(d.operating)<0)d.operating="mixed";
+  if(["optimistic","cautious"].indexOf(d.tone)<0)d.tone="cautious";
+  if(typeof d.red_flags!=="object"||d.red_flags===null)d.red_flags=[];
+  d.source="llm";
+  return d;
+}
+function llmExtract(prov,key,model,prompt){
+  var url=prov==="openrouter"?"https://openrouter.ai/api/v1/chat/completions":
+    (prov==="minimax"?"https://api.minimax.io/v1/chat/completions":"https://api.openai.com/v1/chat/completions");
+  return fetch(url,{method:"POST",
+    headers:{"Authorization":"Bearer "+key,"Content-Type":"application/json"},
+    body:JSON.stringify({model:model,messages:[{role:"user",content:prompt}],temperature:0,max_tokens:4000})
+  }).then(function(r){return r.json();}).then(function(p){
+    var t=(((p.choices||[])[0]||{}).message||{}).content||"";
+    return parseLLM(t);
+  });
+}
 function analyze(){
   var btn=document.getElementById("goBtn");
   btn.disabled=true; status("Extracting fields…");
@@ -197,9 +230,9 @@ function analyze(){
     :PACKS[k];
   var text=document.getElementById("text").value;
   var key=document.getElementById("fkey").value.trim();
-  function finish(liveText,sourceNote){
-    setTimeout(function(){ // let the status paint before the (fast) compute
-      var f=extractFields(liveText||text);
+  function finish(preF,textUsed,sourceNote){
+    setTimeout(function(){ // let the status paint before the compute
+      var f=preF||extractFields(textUsed||text);
       var r=score(f,pack);
       var order=["revenue","revenue_growth_yoy_pct","profit","profit_growth_yoy_pct","profit_vs_estimate",
         "margin_direction","guidance","operating","tone","one_off_note","red_flags"];
@@ -224,21 +257,34 @@ function analyze(){
       if(f.one_off_note)why+=" Note: "+f.one_off_note;
       document.getElementById("memo").innerHTML=
         '<h3>'+esc(pack.company)+' — '+esc(pack.quarter)+' — <span class="view">'+r.view+'</span></h3>'+
-        '<p class="note">Announced '+esc(pack.announced)+'. Source: '+esc(pack.source)+'. '+(sourceNote||"Fields via keyword fallback (no API key).")+'</p>'+
-        '<blockquote>'+esc((liveText||text).slice(0,600))+'</blockquote>'+
+        '<p class="note">Announced '+esc(pack.announced)+'. Source: '+esc(pack.source)+'. '+(sourceNote||"Fields via keyword fallback (paste an LLM key above for model extraction).")+'</p>'+
+        '<blockquote>'+esc((textUsed||text).slice(0,600))+'</blockquote>'+
         '<p>'+esc(why)+'</p>'+
         (f.red_flags.length?'<p>Red flags: '+esc(f.red_flags.join(" "))+'</p>':"");
       status("Done. "+pack.ticker+" "+pack.quarter+": score "+(r.total>0?"+":"")+r.total+" → "+r.view+".");
       btn.disabled=false;
     },30);
   }
+  var lk=document.getElementById("lkey").value.trim();
+  var prov=document.getElementById("prov").value;
+  var model=document.getElementById("model").value.trim()||"MiniMax-M2.7";
+  if(lk){
+    status("Asking "+prov+" LLM… (key stays in this page)");
+    var prompt=PROMPT_TEMPLATE.replace("{company}",pack.company).replace("{quarter}",pack.quarter).replace("{text}",text.slice(0,3000));
+    llmExtract(prov,lk,model,prompt).then(function(f){
+      f.llm_provider=prov; finish(f,text,"Fields via "+prov+" LLM ("+model+").");
+    }).catch(function(){
+      finish(null,text,"LLM call failed — keyword fallback used.");
+    });
+    return;
+  }
   if(key&&k!=="CUSTOM"){
     status("Trying live transcript API…");
     tryLiveFetch(pack.ticker,key).then(function(t){
-      if(t)finish(t,"Fields via live transcript + keyword fallback.");
-      else finish(null,"Live API failed — fell back to bundled pack.");
+      if(t)finish(null,t,"Fields via live transcript + keyword fallback.");
+      else finish(null,text,"Live API failed — fell back to bundled pack.");
     });
-  }else finish(null,null);
+  }else finish(null,text,null);
 }
 if(typeof document!=="undefined"){
   document.getElementById("promptBox").textContent=
